@@ -3,54 +3,7 @@
 {% block title %}Dashboard - GAM Web Interface{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <i class="fas fa-users text-blue-600 text-2xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <h1 class="text-xl font-semibold text-gray-900">GAM Web Interface</h1>
-                    </div>
-                </div>
-                
-                <div class="flex items-center space-x-4">
-                    <div class="text-sm text-gray-500">
-                        Welcome, <span class="font-medium text-gray-900">{{ user.full_name }}</span>
-                    </div>
-                    
-                    <div class="relative">
-                        <button type="button" class="flex text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" onclick="toggleDropdown()">
-                            <span class="sr-only">Open user menu</span>
-                            <div class="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
-                                <span class="text-sm font-medium text-white">{{ user.full_name[0].upper() }}</span>
-                            </div>
-                        </button>
-                        
-                        <div id="userDropdown" class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
-                            <div class="py-1">
-                                {% if user.hashed_password %}
-                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fas fa-key mr-2"></i>Change Password
-                                </a>
-                                {% endif %}
-                                <form action="/auth/logout" method="post" class="block">
-                                    <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        <i class="fas fa-sign-out-alt mr-2"></i>Sign out
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Main content -->
+<!-- Main content -->
     <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div class="px-4 py-6 sm:px-0">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -72,9 +25,7 @@
                     </div>
                     <div class="bg-gray-50 px-5 py-3">
                         <div class="text-sm">
-                            <a href="/admin/sso/setup" class="font-medium text-blue-600 hover:text-blue-500">
-                                Configure SSO →
-                            </a>
+                            <span class="text-gray-500">Ready to go</span>
                         </div>
                     </div>
                 </div>
@@ -180,22 +131,4 @@
             </div>
         </div>
     </div>
-</div>
-
-<script>
-function toggleDropdown() {
-    const dropdown = document.getElementById('userDropdown');
-    dropdown.classList.toggle('hidden');
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', function(event) {
-    const dropdown = document.getElementById('userDropdown');
-    const button = event.target.closest('button');
-    
-    if (!button || !button.onclick) {
-        dropdown.classList.add('hidden');
-    }
-});
-</script>
 {% endblock %}

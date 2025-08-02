@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - GAM Web Interface{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">User Management</h1>
+            <p class="mt-2 text-gray-600">Manage user accounts, roles, and permissions</p>
+        </div>
+
+        <!-- Users Table -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">All Users</h3>
+                    <div id="usersCount" class="text-sm text-gray-500">Loading...</div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    User
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Type
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Role
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Status
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Last Login
+                                </th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Users will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Loading state -->
+                <div id="loadingState" class="text-center py-8">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                    <p class="mt-2 text-gray-500">Loading users...</p>
+                </div>
+                
+                <!-- Empty state -->
+                <div id="emptyState" class="text-center py-8 hidden">
+                    <i class="fas fa-users text-gray-400 text-3xl"></i>
+                    <p class="mt-2 text-gray-500">No users found</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SSO Role Management Info -->
+        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="px-4 py-3">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-info-circle text-blue-600"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800">
+                            SSO User Role Management
+                        </h3>
+                        <div class="mt-2 text-sm text-blue-700">
+                            <p>For SSO users (marked with <i class="fas fa-cloud text-blue-600"></i>), roles are automatically managed through Azure AD group mappings. To change an SSO user's role:</p>
+                            <ol class="mt-2 ml-4 list-decimal space-y-1">
+                                <li>Go to <a href="/admin/sso/setup" class="underline font-medium">SSO Configuration</a></li>
+                                <li>Update the role mappings for their Azure AD groups</li>
+                                <li>The user's role will update on their next login</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Role Change Modal -->
+<div id="roleModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900" id="roleModalTitle">Change User Role</h3>
+                <button onclick="closeRoleModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="roleForm">
+                <input type="hidden" id="roleUserId" name="user_id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Select new role for <span id="roleUserName" class="font-semibold"></span>:
+                    </label>
+                    <select id="newRole" name="role" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeRoleModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Update Role
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Password Reset Modal -->
+<div id="passwordModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Reset Password</h3>
+                <button onclick="closePasswordModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="passwordForm">
+                <input type="hidden" id="passwordUserId" name="user_id">
+                
+                <div class="mb-4">
+                    <p class="text-sm text-gray-600 mb-3">
+                        Reset password for <span id="passwordUserName" class="font-semibold"></span>:
+                    </p>
+                    
+                    <label for="newPassword" class="block text-sm font-medium text-gray-700">New Password</label>
+                    <input type="password" id="newPassword" name="new_password" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                           placeholder="Enter new password">
+                    
+                    <div class="mt-2 text-xs text-gray-500">
+                        Password must be at least 8 characters with uppercase, lowercase, digit, and special character.
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closePasswordModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                        Reset Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let users = [];
+
+// Load users
+async function loadUsers() {
+    try {
+        document.getElementById('loadingState').classList.remove('hidden');
+        document.getElementById('emptyState').classList.add('hidden');
+        document.getElementById('usersTableBody').innerHTML = '';
+        
+        const response = await fetch('/admin/users/list');
+        const data = await response.json();
+        
+        if (response.ok) {
+            users = data.users;
+            displayUsers(users);
+        } else {
+            showAlert('Failed to load users', 'error');
+        }
+    } catch (error) {
+        showAlert('Error loading users: ' + error.message, 'error');
+    } finally {
+        document.getElementById('loadingState').classList.add('hidden');
+    }
+}
+
+// Display users in table
+function displayUsers(userList) {
+    const tbody = document.getElementById('usersTableBody');
+    
+    if (userList.length === 0) {
+        document.getElementById('emptyState').classList.remove('hidden');
+        return;
+    }
+    
+    document.getElementById('usersCount').textContent = `${userList.length} users`;
+    
+    tbody.innerHTML = userList.map(user => {
+        const userTypeIcon = user.is_sso_user 
+            ? '<i class="fas fa-cloud text-blue-600" title="SSO User"></i>'
+            : '<i class="fas fa-user text-gray-600" title="Local User"></i>';
+        
+        const roleBadge = user.role === 'admin'
+            ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>'
+            : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">User</span>';
+        
+        const statusBadge = user.is_active
+            ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>'
+            : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>';
+        
+        const lastLogin = user.last_login 
+            ? new Date(user.last_login).toLocaleString()
+            : 'Never';
+        
+        let actionsHtml = '';
+        if (user.id !== {{ user.id }}) { // Don't show actions for current user
+            actionsHtml = `
+                <div class="flex items-center justify-end space-x-2">
+                    ${!user.is_sso_user ? `
+                        <button onclick="openRoleModal(${user.id}, '${user.full_name}', '${user.role}')"
+                                class="text-blue-600 hover:text-blue-800 text-sm">
+                            <i class="fas fa-user-cog mr-1"></i>Role
+                        </button>
+                        <button onclick="openPasswordModal(${user.id}, '${user.full_name}')"
+                                class="text-yellow-600 hover:text-yellow-800 text-sm">
+                            <i class="fas fa-key mr-1"></i>Password
+                        </button>
+                    ` : `
+                        <span class="text-xs text-gray-500 italic">
+                            <i class="fas fa-info-circle mr-1"></i>Managed via SSO
+                        </span>
+                    `}
+                    <button onclick="toggleUserStatus(${user.id}, '${user.full_name}', ${user.is_active})"
+                            class="${user.is_active ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'} text-sm">
+                        <i class="fas fa-${user.is_active ? 'ban' : 'check'} mr-1"></i>${user.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                </div>
+            `;
+        } else {
+            actionsHtml = '<span class="text-xs text-gray-500 italic">Current User</span>';
+        }
+        
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                            <span class="text-sm font-medium text-gray-700">${user.full_name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">${user.full_name}</div>
+                            <div class="text-sm text-gray-500">${user.email}</div>
+                            <div class="text-xs text-gray-400">@${user.username}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div class="flex items-center">
+                        ${userTypeIcon}
+                        <span class="ml-2">${user.is_sso_user ? 'SSO' : 'Local'}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    ${roleBadge}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex flex-col">
+                        ${statusBadge}
+                        ${user.active_sessions > 0 ? `<span class="text-xs text-green-600 mt-1">${user.active_sessions} active session${user.active_sessions > 1 ? 's' : ''}</span>` : ''}
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${lastLogin}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    ${actionsHtml}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Role modal functions
+function openRoleModal(userId, userName, currentRole) {
+    document.getElementById('roleUserId').value = userId;
+    document.getElementById('roleUserName').textContent = userName;
+    document.getElementById('newRole').value = currentRole;
+    document.getElementById('roleModal').classList.remove('hidden');
+}
+
+function closeRoleModal() {
+    document.getElementById('roleModal').classList.add('hidden');
+    document.getElementById('roleForm').reset();
+}
+
+// Password modal functions
+function openPasswordModal(userId, userName) {
+    document.getElementById('passwordUserId').value = userId;
+    document.getElementById('passwordUserName').textContent = userName;
+    document.getElementById('passwordModal').classList.remove('hidden');
+}
+
+function closePasswordModal() {
+    document.getElementById('passwordModal').classList.add('hidden');
+    document.getElementById('passwordForm').reset();
+}
+
+// Update user role
+document.getElementById('roleForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const userId = formData.get('user_id');
+    const newRole = formData.get('role');
+    
+    try {
+        const response = await fetch(`/admin/users/${userId}/role`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            closeRoleModal();
+            loadUsers(); // Reload users
+        } else {
+            showAlert(result.detail || 'Failed to update role', 'error');
+        }
+    } catch (error) {
+        showAlert('Error updating role: ' + error.message, 'error');
+    }
+});
+
+// Reset user password
+document.getElementById('passwordForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const userId = formData.get('user_id');
+    
+    try {
+        const response = await fetch(`/admin/users/${userId}/password-reset`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            closePasswordModal();
+        } else {
+            showAlert(result.detail || 'Failed to reset password', 'error');
+        }
+    } catch (error) {
+        showAlert('Error resetting password: ' + error.message, 'error');
+    }
+});
+
+// Toggle user status
+async function toggleUserStatus(userId, userName, isActive) {
+    const action = isActive ? 'disable' : 'enable';
+    
+    if (!confirm(`Are you sure you want to ${action} ${userName}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/users/${userId}/toggle-status`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            loadUsers(); // Reload users
+        } else {
+            showAlert(result.detail || `Failed to ${action} user`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error ${action === 'enable' ? 'enabling' : 'disabling'} user: ` + error.message, 'error');
+    }
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const roleModal = document.getElementById('roleModal');
+    const passwordModal = document.getElementById('passwordModal');
+    
+    if (event.target === roleModal) {
+        closeRoleModal();
+    }
+    if (event.target === passwordModal) {
+        closePasswordModal();
+    }
+}
+
+// Load users on page load
+loadUsers();
+</script>
+{% endblock %}

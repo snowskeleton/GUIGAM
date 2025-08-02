@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs - GAM Web Interface{% endblock %}
+
+{% block content %}
+<!-- Main content -->
+    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="px-4 py-6 sm:px-0">
+            <!-- Header -->
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900">Audit Logs</h1>
+                <p class="mt-2 text-gray-600">Track all system activities and user actions</p>
+            </div>
+
+            <!-- Filters -->
+            <div class="bg-white shadow rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label for="actionFilter" class="block text-sm font-medium text-gray-700">Action</label>
+                            <input type="text" id="actionFilter" placeholder="Filter by action..."
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        
+                        <div>
+                            <label for="successFilter" class="block text-sm font-medium text-gray-700">Status</label>
+                            <select id="successFilter" 
+                                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="">All</option>
+                                <option value="true">Success</option>
+                                <option value="false">Failed</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-end">
+                            <button onclick="loadLogs(1)" 
+                                    class="bg-blue-600 text-white px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                <i class="fas fa-search mr-2"></i>Filter
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-end">
+                            <button onclick="clearFilters()" 
+                                    class="bg-gray-500 text-white px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                                <i class="fas fa-times mr-2"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Table -->
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">System Activity</h3>
+                        <div id="logsCount" class="text-sm text-gray-500">Loading...</div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Time
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        User
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Action
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Resource
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Status
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        IP Address
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Logs will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Loading state -->
+                    <div id="loadingState" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                        <p class="mt-2 text-gray-500">Loading audit logs...</p>
+                    </div>
+                    
+                    <!-- Empty state -->
+                    <div id="emptyState" class="text-center py-8 hidden">
+                        <i class="fas fa-search text-gray-400 text-3xl"></i>
+                        <p class="mt-2 text-gray-500">No audit logs found</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            <div id="pagination" class="mt-6 flex items-center justify-between">
+                <div class="flex-1 flex justify-between sm:hidden">
+                    <button id="prevPageMobile" onclick="loadLogs(currentPage - 1)" 
+                            class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Previous
+                    </button>
+                    <button id="nextPageMobile" onclick="loadLogs(currentPage + 1)"
+                            class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next
+                    </button>
+                </div>
+                <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-sm text-gray-700" id="paginationInfo">
+                            <!-- Pagination info will be inserted here -->
+                        </p>
+                    </div>
+                    <div>
+                        <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" id="paginationButtons">
+                            <!-- Pagination buttons will be inserted here -->
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let isLoading = false;
+
+// Load audit logs
+async function loadLogs(page = 1) {
+    if (isLoading) return;
+    
+    isLoading = true;
+    currentPage = page;
+    
+    // Show loading state
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('logsTableBody').innerHTML = '';
+    
+    try {
+        // Get filter values
+        const action = document.getElementById('actionFilter').value;
+        const success = document.getElementById('successFilter').value;
+        
+        // Build query params
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: '50'
+        });
+        
+        if (action) params.append('action', action);
+        if (success) params.append('success', success);
+        
+        // Fetch data
+        const response = await fetch(`/audit-logs/data?${params}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            displayLogs(data);
+        } else {
+            showAlert('Failed to load audit logs', 'error');
+        }
+    } catch (error) {
+        showAlert('Error loading audit logs: ' + error.message, 'error');
+    } finally {
+        isLoading = false;
+        document.getElementById('loadingState').classList.add('hidden');
+    }
+}
+
+// Display logs in table
+function displayLogs(data) {
+    const tbody = document.getElementById('logsTableBody');
+    const { logs, total, page, total_pages } = data;
+    
+    if (logs.length === 0) {
+        document.getElementById('emptyState').classList.remove('hidden');
+        return;
+    }
+    
+    // Update counts and pagination
+    document.getElementById('logsCount').textContent = `${total} total logs`;
+    totalPages = total_pages;
+    currentPage = page;
+    
+    // Generate table rows
+    tbody.innerHTML = logs.map(log => {
+        const time = new Date(log.created_at).toLocaleString();
+        const statusBadge = log.success 
+            ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Success</span>'
+            : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>';
+        
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${time}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    ${log.user_name}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <span class="font-mono">${log.action}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${log.resource || '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    ${statusBadge}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${log.ip_address || '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Update pagination
+    updatePagination();
+}
+
+// Update pagination controls
+function updatePagination() {
+    const start = (currentPage - 1) * 50 + 1;
+    const end = Math.min(currentPage * 50, document.getElementById('logsCount').textContent.split(' ')[0]);
+    
+    document.getElementById('paginationInfo').innerHTML = `
+        Showing <span class="font-medium">${start}</span> to <span class="font-medium">${end}</span> of 
+        <span class="font-medium">${document.getElementById('logsCount').textContent.split(' ')[0]}</span> results
+    `;
+    
+    // Generate pagination buttons
+    let buttons = '';
+    
+    // Previous button
+    buttons += `
+        <button onclick="loadLogs(${currentPage - 1})" 
+                ${currentPage <= 1 ? 'disabled' : ''}
+                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+    `;
+    
+    // Page numbers
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const isActive = i === currentPage;
+        buttons += `
+            <button onclick="loadLogs(${i})" 
+                    class="relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                        isActive 
+                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                    }">
+                ${i}
+            </button>
+        `;
+    }
+    
+    // Next button
+    buttons += `
+        <button onclick="loadLogs(${currentPage + 1})" 
+                ${currentPage >= totalPages ? 'disabled' : ''}
+                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    `;
+    
+    document.getElementById('paginationButtons').innerHTML = buttons;
+    
+    // Update mobile pagination
+    document.getElementById('prevPageMobile').disabled = currentPage <= 1;
+    document.getElementById('nextPageMobile').disabled = currentPage >= totalPages;
+}
+
+// Clear filters
+function clearFilters() {
+    document.getElementById('actionFilter').value = '';
+    document.getElementById('successFilter').value = '';
+    loadLogs(1);
+}
+
+// Load logs on page load
+loadLogs(1);
+</script>
+{% endblock %}

@@ -239,6 +239,71 @@ async def logout(request: Request, db: Session = Depends(get_db)):
     return response
 
 
+# Audit Log Routes (Available to all users)
+@app.get("/audit-logs", response_class=HTMLResponse)
+async def audit_logs_page(request: Request, current_user: User = Depends(get_current_user)):
+    """Audit logs page."""
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    return templates.TemplateResponse("audit_logs.html", {
+        "request": request,
+        "user": current_user
+    })
+
+
+@app.get("/audit-logs/data")
+async def get_audit_logs(request: Request, 
+                        current_user: User = Depends(get_current_user),
+                        page: int = 1,
+                        limit: int = 50,
+                        action: str = None,
+                        success: bool = None,
+                        db: Session = Depends(get_db)):
+    """Get audit logs with pagination and filtering."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Base query
+    query = db.query(AuditLog).join(User, AuditLog.user_id == User.id, isouter=True)
+    
+    # Apply filters
+    if action:
+        query = query.filter(AuditLog.action.ilike(f"%{action}%"))
+    if success is not None:
+        query = query.filter(AuditLog.success == success)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * limit
+    logs = query.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+    
+    # Format response
+    logs_data = []
+    for log in logs:
+        user_name = log.user.full_name if log.user else "System"
+        logs_data.append({
+            "id": log.id,
+            "user_name": user_name,
+            "action": log.action,
+            "resource": log.resource,
+            "details": log.details,
+            "success": log.success,
+            "ip_address": log.ip_address,
+            "created_at": log.created_at.isoformat()
+        })
+    
+    return {
+        "logs": logs_data,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit
+    }
+
+
 # SSO Configuration Routes (Admin Only)
 @app.get("/admin/sso/setup", response_class=HTMLResponse)
 async def sso_setup_page(request: Request, current_user: User = Depends(get_current_user)):
@@ -469,6 +534,180 @@ async def delete_role_mapping(mapping_id: int,
         raise HTTPException(
             status_code=500, detail=f"Failed to delete role mapping: {str(e)}")
 
+
+# User Management Routes
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request, current_user: User = Depends(get_current_user)):
+    """Admin user management page."""
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    return templates.TemplateResponse("admin_users.html", {"request": request, "user": current_user})
+
+@app.get("/admin/users/list")
+async def get_users_list(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get list of all users."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = db.query(User).all()
+    user_list = []
+    
+    for user in users:
+        # Count active sessions
+        active_sessions = db.query(UserSession).filter(
+            UserSession.user_id == user.id,
+            UserSession.expires_at > datetime.utcnow()
+        ).count()
+        
+        user_list.append({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "is_active": user.is_active,
+            "has_password": user.hashed_password is not None,
+            "is_sso_user": user.azure_id is not None,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "created_at": user.created_at.isoformat() if hasattr(user, 'created_at') else None,
+            "active_sessions": active_sessions
+        })
+    
+    return {"users": user_list}
+
+@app.post("/admin/users/{user_id}/role")
+async def update_user_role(user_id: int, 
+                          request: Request,
+                          current_user: User = Depends(get_current_user),
+                          role: str = Form(...),
+                          db: Session = Depends(get_db)):
+    """Update user role."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if role not in ["user", "admin"]:
+        raise HTTPException(status_code=400, detail="Invalid role. Must be 'user' or 'admin'")
+    
+    # Don't allow changing your own role
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't allow role changes for SSO users
+    if user.azure_id:
+        raise HTTPException(status_code=400, detail="Cannot change role for SSO users. Role is managed through Azure AD groups.")
+    
+    try:
+        old_role = user.role
+        user.role = role
+        db.commit()
+        
+        log_audit_event(db, current_user.id, "user_role_updated", user.username,
+                       f"Role changed from {old_role} to {role}", True, request.client.host)
+        
+        return {"message": f"User role updated to {role} successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update user role: {str(e)}")
+
+@app.post("/admin/users/{user_id}/password-reset")
+async def reset_user_password(user_id: int, 
+                             request: Request,
+                             current_user: User = Depends(get_current_user),
+                             new_password: str = Form(...),
+                             db: Session = Depends(get_db)):
+    """Reset user password."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't allow password reset for SSO users
+    if user.azure_id:
+        raise HTTPException(status_code=400, detail="Cannot reset password for SSO users")
+    
+    # Validate password strength
+    if not validate_password_strength(new_password):
+        raise HTTPException(
+            status_code=400, 
+            detail="Password must be at least 8 characters long and contain uppercase, lowercase, digit, and special character"
+        )
+    
+    try:
+        user.hashed_password = get_password_hash(new_password)
+        
+        # Invalidate all existing sessions for this user
+        db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+        
+        db.commit()
+        
+        log_audit_event(db, current_user.id, "user_password_reset", user.username,
+                       "Password reset by admin", True, request.client.host)
+        
+        return {"message": "Password reset successfully. User will need to log in again."}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reset password: {str(e)}")
+
+@app.post("/admin/users/{user_id}/toggle-status")
+async def toggle_user_status(user_id: int, 
+                            request: Request,
+                            current_user: User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """Toggle user active/inactive status."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Don't allow disabling your own account
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot disable your own account")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        old_status = user.is_active
+        user.is_active = not user.is_active
+        
+        # If disabling user, invalidate all their sessions
+        if not user.is_active:
+            db.query(UserSession).filter(UserSession.user_id == user_id).delete()
+        
+        db.commit()
+        
+        action = "enabled" if user.is_active else "disabled"
+        log_audit_event(db, current_user.id, "user_status_changed", user.username,
+                       f"User {action}", True, request.client.host)
+        
+        return {"message": f"User {action} successfully", "is_active": user.is_active}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update user status: {str(e)}")
 
 # SSO Authentication Routes
 @app.get("/auth/sso/microsoft")
