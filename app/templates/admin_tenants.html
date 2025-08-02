@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+
+{% block title %}Tenant Management - GAM Web Interface{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Google Workspace Tenants</h1>
+            <p class="mt-2 text-gray-600">Manage your Google Workspace domains and service accounts</p>
+        </div>
+
+        <!-- Add Tenant Button -->
+        <div class="mb-6">
+            <button onclick="openAddTenantModal()" 
+                    class="bg-blue-600 text-white px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i class="fas fa-plus mr-2"></i>Add New Tenant
+            </button>
+        </div>
+
+        <!-- Tenants Table -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">All Tenants</h3>
+                    <div id="tenantsCount" class="text-sm text-gray-500">Loading...</div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Domain
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Display Name
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Admin Email
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Status
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Created
+                                </th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="tenantsTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Tenants will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Loading state -->
+                <div id="loadingState" class="text-center py-8">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                    <p class="mt-2 text-gray-500">Loading tenants...</p>
+                </div>
+                
+                <!-- Empty state -->
+                <div id="emptyState" class="text-center py-8 hidden">
+                    <i class="fas fa-building text-gray-400 text-3xl"></i>
+                    <p class="mt-2 text-gray-500">No tenants configured yet</p>
+                    <button onclick="openAddTenantModal()" 
+                            class="mt-4 bg-blue-600 text-white px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">
+                        Add Your First Tenant
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup Instructions -->
+        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="px-4 py-3">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-info-circle text-blue-600"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800">
+                            Google Workspace Setup Required
+                        </h3>
+                        <div class="mt-2 text-sm text-blue-700">
+                            <p>To add a Google Workspace tenant, you need:</p>
+                            <ol class="mt-2 ml-4 list-decimal space-y-1">
+                                <li>A Google Cloud Project with Admin SDK API enabled</li>
+                                <li>A service account with domain-wide delegation</li>
+                                <li>The service account key JSON file</li>
+                                <li>A super admin email address for impersonation</li>
+                            </ol>
+                            <p class="mt-2">
+                                <a href="https://developers.google.com/admin-sdk/directory/v1/guides/delegation" 
+                                   target="_blank" class="underline font-medium">
+                                    View Google's delegation setup guide →
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Tenant Modal -->
+<div id="tenantModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900" id="tenantModalTitle">Add New Tenant</h3>
+                <button onclick="closeTenantModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="tenantForm">
+                <input type="hidden" id="tenantId" name="tenant_id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label for="domain" class="block text-sm font-medium text-gray-700 mb-2">
+                            Domain <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="domain" name="domain" required
+                               class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                               placeholder="example.com">
+                        <p class="mt-1 text-xs text-gray-500">The Google Workspace domain</p>
+                    </div>
+                    
+                    <div>
+                        <label for="displayName" class="block text-sm font-medium text-gray-700 mb-2">
+                            Display Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="displayName" name="display_name" required
+                               class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                               placeholder="Acme Corporation">
+                        <p class="mt-1 text-xs text-gray-500">Friendly name for this tenant</p>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="adminEmail" class="block text-sm font-medium text-gray-700 mb-2">
+                        Super Admin Email <span class="text-red-500">*</span>
+                    </label>
+                    <input type="email" id="adminEmail" name="admin_email" required
+                           class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                           placeholder="admin@example.com">
+                    <p class="mt-1 text-xs text-gray-500">Super admin email for service account impersonation</p>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="serviceAccountKey" class="block text-sm font-medium text-gray-700 mb-2">
+                        Service Account Key JSON <span class="text-red-500">*</span>
+                    </label>
+                    <textarea id="serviceAccountKey" name="service_account_key" required rows="8"
+                              class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono text-xs"
+                              placeholder='{"type": "service_account", "project_id": "...", ...}'></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Paste the complete service account key JSON</p>
+                </div>
+                
+                <div class="flex justify-between space-x-3">
+                    <div>
+                        <button type="button" onclick="testTenantConnection()" id="testBtn"
+                                class="bg-yellow-600 text-white px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            <i class="fas fa-flask mr-2"></i>Test Connection
+                        </button>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="closeTenantModal()"
+                                class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                            <span id="submitBtnText">Add Tenant</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let tenants = [];
+let isEditMode = false;
+
+// Load tenants
+async function loadTenants() {
+    try {
+        document.getElementById('loadingState').classList.remove('hidden');
+        document.getElementById('emptyState').classList.add('hidden');
+        document.getElementById('tenantsTableBody').innerHTML = '';
+        
+        const response = await fetch('/admin/tenants/list');
+        const data = await response.json();
+        
+        if (response.ok) {
+            tenants = data.tenants;
+            displayTenants(tenants);
+        } else {
+            showAlert('Failed to load tenants', 'error');
+        }
+    } catch (error) {
+        showAlert('Error loading tenants: ' + error.message, 'error');
+    } finally {
+        document.getElementById('loadingState').classList.add('hidden');
+    }
+}
+
+// Display tenants in table
+function displayTenants(tenantList) {
+    const tbody = document.getElementById('tenantsTableBody');
+    
+    if (tenantList.length === 0) {
+        document.getElementById('emptyState').classList.remove('hidden');
+        return;
+    }
+    
+    document.getElementById('tenantsCount').textContent = `${tenantList.length} tenants`;
+    
+    tbody.innerHTML = tenantList.map(tenant => {
+        const statusBadge = tenant.is_active
+            ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>'
+            : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>';
+        
+        const created = new Date(tenant.created_at).toLocaleDateString();
+        
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <i class="fas fa-building text-blue-600"></i>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">${tenant.domain}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${tenant.display_name}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${tenant.admin_email}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    ${statusBadge}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${created}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div class="flex items-center justify-end space-x-2">
+                        <button onclick="testTenantById(${tenant.id})"
+                                class="text-yellow-600 hover:text-yellow-800 text-sm">
+                            <i class="fas fa-flask mr-1"></i>Test
+                        </button>
+                        <button onclick="editTenant(${tenant.id})"
+                                class="text-blue-600 hover:text-blue-800 text-sm">
+                            <i class="fas fa-edit mr-1"></i>Edit
+                        </button>
+                        <button onclick="toggleTenantStatus(${tenant.id}, '${tenant.domain}', ${tenant.is_active})"
+                                class="${tenant.is_active ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'} text-sm">
+                            <i class="fas fa-${tenant.is_active ? 'ban' : 'check'} mr-1"></i>${tenant.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button onclick="deleteTenant(${tenant.id}, '${tenant.domain}')"
+                                class="text-red-600 hover:text-red-800 text-sm">
+                            <i class="fas fa-trash mr-1"></i>Delete
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Modal functions
+function openAddTenantModal() {
+    isEditMode = false;
+    document.getElementById('tenantModalTitle').textContent = 'Add New Tenant';
+    document.getElementById('submitBtnText').textContent = 'Add Tenant';
+    document.getElementById('tenantForm').reset();
+    document.getElementById('tenantId').value = '';
+    document.getElementById('domain').disabled = false;
+    document.getElementById('tenantModal').classList.remove('hidden');
+}
+
+function editTenant(tenantId) {
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return;
+    
+    isEditMode = true;
+    document.getElementById('tenantModalTitle').textContent = 'Edit Tenant';
+    document.getElementById('submitBtnText').textContent = 'Update Tenant';
+    document.getElementById('tenantId').value = tenant.id;
+    document.getElementById('domain').value = tenant.domain;
+    document.getElementById('domain').disabled = true; // Can't change domain
+    document.getElementById('displayName').value = tenant.display_name;
+    document.getElementById('adminEmail').value = tenant.admin_email;
+    document.getElementById('serviceAccountKey').value = ''; // Don't show existing key
+    document.getElementById('serviceAccountKey').required = false; // Optional on edit
+    document.getElementById('tenantModal').classList.remove('hidden');
+}
+
+function closeTenantModal() {
+    document.getElementById('tenantModal').classList.add('hidden');
+    document.getElementById('tenantForm').reset();
+    document.getElementById('serviceAccountKey').required = true; // Reset to required
+}
+
+// Form submission
+document.getElementById('tenantForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitBtn = document.querySelector('#tenantForm button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+    
+    try {
+        let response;
+        if (isEditMode) {
+            const tenantId = formData.get('tenant_id');
+            response = await fetch(`/admin/tenants/${tenantId}`, {
+                method: 'PUT',
+                body: formData
+            });
+        } else {
+            response = await fetch('/admin/tenants', {
+                method: 'POST',
+                body: formData
+            });
+        }
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            closeTenantModal();
+            loadTenants();
+        } else {
+            showAlert(result.detail || 'Failed to save tenant', 'error');
+        }
+    } catch (error) {
+        showAlert('Error saving tenant: ' + error.message, 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+});
+
+// Test connection functions
+async function testTenantConnection() {
+    const formData = new FormData(document.getElementById('tenantForm'));
+    const testBtn = document.getElementById('testBtn');
+    
+    // For add mode, we need to validate the form first
+    if (!isEditMode) {
+        const domain = formData.get('domain');
+        const serviceAccountKey = formData.get('service_account_key');
+        
+        if (!domain || !serviceAccountKey) {
+            showAlert('Please fill in domain and service account key to test', 'error');
+            return;
+        }
+    }
+    
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing...';
+    
+    try {
+        if (isEditMode) {
+            const tenantId = formData.get('tenant_id');
+            await testTenantById(tenantId);
+        } else {
+            // For new tenants, we'd need a different endpoint or approach
+            showAlert('Please save the tenant first, then test the connection', 'info');
+        }
+    } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-flask mr-2"></i>Test Connection';
+    }
+}
+
+async function testTenantById(tenantId) {
+    try {
+        const response = await fetch(`/admin/tenants/${tenantId}/test`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.valid) {
+            showAlert('Connection test successful!', 'success');
+        } else {
+            showAlert('Connection test failed: ' + (result.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        showAlert('Connection test failed: ' + error.message, 'error');
+    }
+}
+
+// Toggle tenant status
+async function toggleTenantStatus(tenantId, domain, isActive) {
+    const action = isActive ? 'disable' : 'enable';
+    
+    if (!confirm(`Are you sure you want to ${action} ${domain}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/tenants/${tenantId}/toggle-status`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            loadTenants();
+        } else {
+            showAlert(result.detail || `Failed to ${action} tenant`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error ${action === 'enable' ? 'enabling' : 'disabling'} tenant: ` + error.message, 'error');
+    }
+}
+
+// Delete tenant
+async function deleteTenant(tenantId, domain) {
+    if (!confirm(`Are you sure you want to delete ${domain}? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/tenants/${tenantId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert(result.message, 'success');
+            loadTenants();
+        } else {
+            showAlert(result.detail || 'Failed to delete tenant', 'error');
+        }
+    } catch (error) {
+        showAlert('Error deleting tenant: ' + error.message, 'error');
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('tenantModal');
+    if (event.target === modal) {
+        closeTenantModal();
+    }
+}
+
+// Load tenants on page load
+loadTenants();
+</script>
+{% endblock %}

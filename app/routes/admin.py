@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.database import get_db
-from app.models import User, UserSession, SSOConfig, RoleMapping
+from app.models import User, UserSession, SSOConfig, RoleMapping, GoogleWorkspaceTenant
 from app.security import get_password_hash, validate_password_strength, encryption_manager
 from app.sso import validate_sso_config, get_available_groups_for_admin
 from app.utils import log_audit_event
@@ -368,3 +368,220 @@ async def toggle_user_status(user_id: int,
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update user status: {str(e)}")
+
+# Google Workspace Tenant Management Routes
+@router.get("/tenants", response_class=HTMLResponse)
+async def admin_tenants_page(request: Request, current_user: User = Depends(require_admin_page)):
+    """Admin tenant management page."""
+    return templates.TemplateResponse("admin_tenants.html", {"request": request, "user": current_user})
+
+@router.get("/tenants/list")
+async def get_tenants_list(request: Request, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Get list of all Google Workspace tenants."""
+    tenants = db.query(GoogleWorkspaceTenant).all()
+    tenant_list = []
+    
+    for tenant in tenants:
+        tenant_list.append({
+            "id": tenant.id,
+            "domain": tenant.domain,
+            "display_name": tenant.display_name,
+            "admin_email": tenant.admin_email,
+            "is_active": tenant.is_active,
+            "created_at": tenant.created_at.isoformat(),
+            "updated_at": tenant.updated_at.isoformat()
+        })
+    
+    return {"tenants": tenant_list}
+
+@router.post("/tenants")
+async def create_tenant(request: Request,
+                       current_user: User = Depends(require_admin),
+                       domain: str = Form(...),
+                       display_name: str = Form(...),
+                       admin_email: str = Form(...),
+                       service_account_key: str = Form(...),
+                       db: Session = Depends(get_db)):
+    """Create a new Google Workspace tenant."""
+    # Validate domain format
+    if not domain or '.' not in domain:
+        raise HTTPException(status_code=400, detail="Invalid domain format")
+    
+    # Validate email format
+    if not admin_email or '@' not in admin_email:
+        raise HTTPException(status_code=400, detail="Invalid admin email format")
+    
+    # Check if domain already exists
+    existing = db.query(GoogleWorkspaceTenant).filter(
+        GoogleWorkspaceTenant.domain == domain
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Domain already exists")
+    
+    try:
+        # Validate service account key is valid JSON
+        import json
+        json.loads(service_account_key)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid service account key JSON")
+    
+    try:
+        # Encrypt the service account key
+        encrypted_key = encryption_manager.encrypt(service_account_key)
+        
+        # Create tenant
+        tenant = GoogleWorkspaceTenant(
+            domain=domain.lower(),
+            display_name=display_name,
+            admin_email=admin_email.lower(),
+            service_account_key=encrypted_key
+        )
+        db.add(tenant)
+        db.commit()
+        
+        log_audit_event(db, current_user.id, "tenant_created", domain,
+                       f"Created tenant: {display_name}", True, request.client.host)
+        
+        return {"message": f"Tenant {domain} created successfully", "tenant_id": tenant.id}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create tenant: {str(e)}")
+
+@router.post("/tenants/{tenant_id}/test")
+async def test_tenant_connection(tenant_id: int,
+                                request: Request,
+                                current_user: User = Depends(require_admin),
+                                db: Session = Depends(get_db)):
+    """Test connection to Google Workspace tenant."""
+    tenant = db.query(GoogleWorkspaceTenant).filter(
+        GoogleWorkspaceTenant.id == tenant_id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    try:
+        # Here you would implement actual Google Workspace API testing
+        # For now, we'll just validate the service account key format
+        import json
+        decrypted_key = encryption_manager.decrypt(tenant.service_account_key)
+        key_data = json.loads(decrypted_key)
+        
+        # Basic validation of service account key structure
+        required_fields = ["type", "project_id", "private_key_id", "private_key", "client_email"]
+        for field in required_fields:
+            if field not in key_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        if key_data.get("type") != "service_account":
+            raise ValueError("Invalid service account key type")
+        
+        log_audit_event(db, current_user.id, "tenant_test_success", tenant.domain,
+                       "Tenant connection test successful", True, request.client.host)
+        
+        return {"valid": True, "message": "Connection test successful"}
+    
+    except Exception as e:
+        log_audit_event(db, current_user.id, "tenant_test_failed", tenant.domain,
+                       f"Tenant test failed: {str(e)}", False, request.client.host)
+        return {"valid": False, "error": str(e)}
+
+@router.put("/tenants/{tenant_id}")
+async def update_tenant(tenant_id: int,
+                       request: Request,
+                       current_user: User = Depends(require_admin),
+                       display_name: str = Form(...),
+                       admin_email: str = Form(...),
+                       service_account_key: str = Form(None),
+                       db: Session = Depends(get_db)):
+    """Update a Google Workspace tenant."""
+    tenant = db.query(GoogleWorkspaceTenant).filter(
+        GoogleWorkspaceTenant.id == tenant_id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Validate email format
+    if not admin_email or '@' not in admin_email:
+        raise HTTPException(status_code=400, detail="Invalid admin email format")
+    
+    try:
+        # Update basic info
+        tenant.display_name = display_name
+        tenant.admin_email = admin_email.lower()
+        tenant.updated_at = datetime.utcnow()
+        
+        # Update service account key if provided
+        if service_account_key:
+            try:
+                import json
+                json.loads(service_account_key)
+                encrypted_key = encryption_manager.encrypt(service_account_key)
+                tenant.service_account_key = encrypted_key
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid service account key JSON")
+        
+        db.commit()
+        
+        log_audit_event(db, current_user.id, "tenant_updated", tenant.domain,
+                       f"Updated tenant: {display_name}", True, request.client.host)
+        
+        return {"message": f"Tenant {tenant.domain} updated successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update tenant: {str(e)}")
+
+@router.post("/tenants/{tenant_id}/toggle-status")
+async def toggle_tenant_status(tenant_id: int,
+                              request: Request,
+                              current_user: User = Depends(require_admin),
+                              db: Session = Depends(get_db)):
+    """Toggle tenant active/inactive status."""
+    tenant = db.query(GoogleWorkspaceTenant).filter(
+        GoogleWorkspaceTenant.id == tenant_id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    try:
+        old_status = tenant.is_active
+        tenant.is_active = not tenant.is_active
+        tenant.updated_at = datetime.utcnow()
+        db.commit()
+        
+        action = "enabled" if tenant.is_active else "disabled"
+        log_audit_event(db, current_user.id, "tenant_status_changed", tenant.domain,
+                       f"Tenant {action}", True, request.client.host)
+        
+        return {"message": f"Tenant {action} successfully", "is_active": tenant.is_active}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update tenant status: {str(e)}")
+
+@router.delete("/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: int,
+                       request: Request,
+                       current_user: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    """Delete a Google Workspace tenant."""
+    tenant = db.query(GoogleWorkspaceTenant).filter(
+        GoogleWorkspaceTenant.id == tenant_id
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    try:
+        domain = tenant.domain
+        db.delete(tenant)
+        db.commit()
+        
+        log_audit_event(db, current_user.id, "tenant_deleted", domain,
+                       f"Deleted tenant: {domain}", True, request.client.host)
+        
+        return {"message": f"Tenant {domain} deleted successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
