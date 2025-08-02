@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
@@ -7,17 +7,14 @@ from typing import Optional
 
 from app.database import get_db
 from app.models import User, AuditLog, SSOConfig
-from app.utils import get_current_user
+from app.dependencies import require_auth_page, require_auth
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/", response_class=HTMLResponse)
-async def main_page(request: Request, current_user: User = Depends(get_current_user)):
+async def main_page(request: Request, current_user: User = Depends(require_auth_page)):
     """Main dashboard - requires authentication."""
-    if not current_user:
-        return RedirectResponse(url="/login", status_code=302)
-
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": current_user
@@ -38,24 +35,19 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     })
 
 @router.get("/audit-logs", response_class=HTMLResponse)
-async def audit_logs_page(request: Request, current_user: User = Depends(get_current_user)):
+async def audit_logs_page(request: Request, current_user: User = Depends(require_auth_page)):
     """Audit logs page."""
-    if not current_user:
-        return RedirectResponse(url="/login", status_code=302)
-    
     return templates.TemplateResponse("audit_logs.html", {"request": request, "user": current_user})
 
 @router.get("/audit-logs/data")
 async def get_audit_logs(request: Request,
-                        current_user: User = Depends(get_current_user),
+                        current_user: User = Depends(require_auth),
                         page: int = Query(1, ge=1),
                         limit: int = Query(50, ge=1, le=100),
                         action: Optional[str] = Query(None),
                         success: Optional[bool] = Query(None),
                         db: Session = Depends(get_db)):
     """Get audit logs data."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
     
     # Base query
     query = db.query(AuditLog).join(User, AuditLog.user_id == User.id, isouter=True)

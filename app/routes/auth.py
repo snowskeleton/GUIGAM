@@ -14,7 +14,8 @@ from app.security import (
     validate_password_strength
 )
 from app.sso import get_sso_provider, create_or_update_sso_user
-from app.utils import log_audit_event, get_current_user
+from app.utils import log_audit_event
+from app.dependencies import require_auth
 
 router = APIRouter()
 
@@ -66,11 +67,9 @@ async def login(request: Request,
 async def change_password(request: Request,
                          current_password: str = Form(...),
                          new_password: str = Form(...),
-                         current_user: User = Depends(get_current_user),
+                         current_user: User = Depends(require_auth),
                          db: Session = Depends(get_db)):
     """Change user password."""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
 
     # Verify current password
     if not current_user.hashed_password or not verify_password(current_password, current_user.hashed_password):
@@ -106,27 +105,26 @@ async def change_password(request: Request,
 
 @router.post("/logout")
 async def logout(request: Request, 
-                current_user: User = Depends(get_current_user),
+                current_user: User = Depends(require_auth),
                 db: Session = Depends(get_db)):
     """Handle user logout."""
-    if current_user:
-        # Invalidate current session
-        token = request.cookies.get("access_token")
-        if token:
-            from app.security import verify_token
-            payload = verify_token(token)
-            if payload:
-                session_id = payload.get("session_id")
-                if session_id:
-                    session = db.query(UserSession).filter(
-                        UserSession.session_id == session_id
-                    ).first()
-                    if session:
-                        session.is_active = False
-                        db.commit()
+    # Invalidate current session
+    token = request.cookies.get("access_token")
+    if token:
+        from app.security import verify_token
+        payload = verify_token(token)
+        if payload:
+            session_id = payload.get("session_id")
+            if session_id:
+                session = db.query(UserSession).filter(
+                    UserSession.session_id == session_id
+                ).first()
+                if session:
+                    session.is_active = False
+                    db.commit()
 
-        log_audit_event(db, current_user.id, "logout", None, 
-                       "User logged out", True, request.client.host)
+    log_audit_event(db, current_user.id, "logout", None, 
+                   "User logged out", True, request.client.host)
 
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("access_token")

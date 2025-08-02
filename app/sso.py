@@ -7,7 +7,7 @@ import requests
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from app.models import SSOConfig, User, RoleMapping
-from app.security import encryption_manager, generate_session_id, create_access_token
+from app.security import encryption_manager
 from datetime import datetime
 
 
