@@ -44,13 +44,14 @@ def log_audit_event(db: Session, user_id: Optional[int], action: str,
     db.commit()
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), 
-                    db: Session = Depends(get_db)) -> Optional[User]:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     """Get current authenticated user."""
-    if not credentials:
+    # Get token from cookie
+    token = request.cookies.get("access_token")
+    if not token:
         return None
     
-    payload = verify_token(credentials.credentials)
+    payload = verify_token(token)
     if not payload:
         return None
     
@@ -163,7 +164,7 @@ async def login(request: Request,
     
     # Redirect to dashboard
     response = RedirectResponse(url="/dashboard", status_code=302)
-    response.set_cookie("access_token", access_token, httponly=True, secure=False)  # Set secure=True in production
+    response.set_cookie("access_token", access_token, httponly=True, secure=True, samesite="lax")
     return response
 
 
@@ -231,7 +232,7 @@ async def change_password(request: Request,
         access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))
         
         response = RedirectResponse(url="/dashboard", status_code=302)
-        response.set_cookie("access_token", access_token, httponly=True, secure=False)
+        response.set_cookie("access_token", access_token, httponly=True, secure=True, samesite="lax")
         return response
     
     return {"message": "Password changed successfully"}
@@ -250,8 +251,9 @@ async def dashboard(request: Request, current_user: User = Depends(get_current_u
 
 
 @app.post("/auth/logout")
-async def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def logout(request: Request, db: Session = Depends(get_db)):
     """Logout and invalidate session."""
+    current_user = get_current_user(request, db)
     if current_user:
         # Invalidate all user sessions
         db.query(UserSession).filter(UserSession.user_id == current_user.id).update({"is_active": False})

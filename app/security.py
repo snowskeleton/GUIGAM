@@ -6,6 +6,10 @@ import secrets
 import base64
 from cryptography.fernet import Fernet
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
