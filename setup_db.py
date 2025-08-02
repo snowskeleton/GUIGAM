@@ -6,23 +6,47 @@ Creates initial database and admin user.
 
 import sys
 import getpass
+import os
+from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, create_tables
 from app.models import User
 from app.security import get_password_hash, validate_password_strength
 
-def create_admin_user():
-    """Create the initial admin user."""
+# Load environment variables
+load_dotenv()
+
+def setup_database():
+    """Set up database and optionally create admin user."""
     print("Setting up GAM Web Interface Database")
     print("=" * 40)
     
     # Create tables
-    print("Creating database tables...")
+    print("Creating/updating database tables...")
     create_tables()
-    print("✓ Database tables created")
+    print("✓ Database tables created/updated")
+    
+    # Check if any users exist
+    db = SessionLocal()
+    try:
+        user_count = db.query(User).count()
+        if user_count > 0:
+            print(f"\n✓ Database already has {user_count} user(s)")
+            print("Skipping admin user creation.")
+            print("\nDatabase setup complete!")
+            return
+        
+        print(f"\nNo users found. Creating initial admin user...")
+        
+    except Exception as e:
+        print(f"Error checking existing users: {e}")
+        return
+    finally:
+        db.close()
     
     # Create admin user
-    print("\nCreating admin user...")
+    print("\nAdmin User Setup:")
+    print("-" * 20)
     
     while True:
         username = input("Admin username: ").strip()
@@ -76,23 +100,27 @@ def create_admin_user():
             print(f"Email '{email}' already exists!")
             return
         
-        # Create admin user
+        # Create admin user with admin role
         admin_user = User(
             username=username,
             email=email,
             full_name=full_name,
             hashed_password=get_password_hash(password),
             is_active=True,
-            is_first_login=False  # Skip first login for setup
+            role="admin"  # Make sure initial user is admin
         )
         
         db.add(admin_user)
         db.commit()
         
         print(f"✓ Admin user '{username}' created successfully!")
+        print(f"\nDatabase setup complete!")
         print(f"\nYou can now start the application with:")
-        print(f"  python -m uvicorn app.main:app --reload")
-        print(f"\nThen visit: http://localhost:8000")
+        print(f"  python -m uvicorn app.main:app --host 0.0.0.0 --port 6543")
+        
+        # Get app URL from environment
+        app_url = os.getenv("APP_URL", "http://localhost:6543")
+        print(f"\nThen visit: {app_url}")
         
     except Exception as e:
         db.rollback()
@@ -103,7 +131,7 @@ def create_admin_user():
 
 if __name__ == "__main__":
     try:
-        create_admin_user()
+        setup_database()
     except KeyboardInterrupt:
         print("\nSetup cancelled.")
         sys.exit(1)

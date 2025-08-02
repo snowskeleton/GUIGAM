@@ -17,13 +17,15 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)  # Nullable for SSO-only users
     full_name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
-    is_first_login = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
     
     # SSO fields
     azure_id = Column(String(255), unique=True, nullable=True, index=True)
+    
+    # Role field
+    role = Column(String(20), default="user")  # "user" or "admin"
     
     # Relationships
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
@@ -68,6 +70,17 @@ class GoogleWorkspaceTenant(Base):
     service_account_key = Column(Text, nullable=False)  # Encrypted JSON
     admin_email = Column(String(100), nullable=False)  # For impersonation
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RoleMapping(Base):
+    __tablename__ = "role_mappings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    azure_group_id = Column(String(255), nullable=False, index=True)
+    azure_group_name = Column(String(255), nullable=False)
+    guigam_role = Column(String(20), nullable=False)  # "user" or "admin"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
